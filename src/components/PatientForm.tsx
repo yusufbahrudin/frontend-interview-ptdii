@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { usePatientStore } from "@/store/patientStore";
 import { PatientFormData, FormErrors } from "@/types/patient";
 import { validatePatientForm, isFormValid } from "@/utils/validation";
@@ -19,6 +19,7 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
   const addPatient = usePatientStore((state) => state.addPatient);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState<PatientFormData>({
     name: "",
     nik: "",
@@ -30,21 +31,70 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
 
   const { doctorOptions, roomOptions } = useFormOptions();
 
+  // Debounced validation
+  const validateField = useCallback((field: keyof PatientFormData, value: string) => {
+    if (touched[field]) {
+      const tempData = { ...formData, [field]: value };
+      const validationErrors = validatePatientForm(tempData);
+      
+      setErrors((prev) => ({
+        ...prev,
+        [field]: validationErrors[field],
+      }));
+    }
+  }, [formData, touched]);
+
   const handleInputChange = (field: keyof PatientFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-
+    
+    // Mark field as touched
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    
+    // Clear specific error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
   };
 
+  const handleFieldBlur = (field: keyof PatientFormData) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    validateField(field, formData[field]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate all fields
     const validationErrors = validatePatientForm(formData);
 
     if (!isFormValid(validationErrors)) {
       setErrors(validationErrors);
+      setTouched({
+        name: true,
+        nik: true,
+        diagnosis: true,
+        admissionDate: true,
+        doctor: true,
+        room: true,
+      });
+
+      // Count total errors
+      const errorCount = Object.keys(validationErrors).length;
+
+      // Show alert with error count
+      alert(
+        `Terdapat ${errorCount} field yang perlu diperbaiki. Silakan periksa kembali formulir Anda.`
+      );
+
+      // Scroll to first error field
+      const firstErrorField = Object.keys(validationErrors)[0];
+      const errorElement = document.querySelector(
+        `[name="${firstErrorField}"]`
+      );
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        (errorElement as HTMLElement).focus();
+      }
       return;
     }
 
@@ -57,6 +107,7 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
       onSuccess();
     } catch (error) {
       console.error("Error adding patient:", error);
+      alert("Terjadi kesalahan saat menyimpan data pasien. Silakan coba lagi.");
     } finally {
       setIsSubmitting(false);
     }
@@ -90,6 +141,36 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
         </p>
       </CardHeader>
       <CardContent className="p-8 bg-gradient-to-br from-slate-50/30 to-white">
+        {/* Error Summary */}
+        {Object.keys(errors).length > 0 && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="flex items-center">
+              <svg
+                className="w-5 h-5 text-red-600 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <h4 className="text-red-800 font-semibold">
+                Terdapat {Object.keys(errors).length} field yang perlu
+                diperbaiki:
+              </h4>
+            </div>
+            <ul className="mt-2 text-sm text-red-700 list-disc list-inside space-y-1">
+              {Object.entries(errors).map(([field, message]) => (
+                <li key={field}>{message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="space-y-6">
             <div className="flex items-center space-x-3">
@@ -118,10 +199,12 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
               <div className="space-y-2">
                 <Input
                   label="Nama Lengkap"
+                  name="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
+                  onBlur={() => handleFieldBlur("name")}
                   error={errors.name}
-                  required
+                  isRequired
                   placeholder="Masukkan nama lengkap pasien"
                   className="bg-white/80 border-slate-300 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
                 />
@@ -130,10 +213,12 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
               <div className="space-y-2">
                 <Input
                   label="NIK"
+                  name="nik"
                   value={formData.nik}
                   onChange={(e) => handleInputChange("nik", e.target.value)}
+                  onBlur={() => handleFieldBlur("nik")}
                   error={errors.nik}
-                  required
+                  isRequired
                   placeholder="16 digit NIK"
                   maxLength={16}
                   pattern="[0-9]{16}"
@@ -170,10 +255,12 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
             <div className="space-y-2">
               <Input
                 label="Diagnosa Masuk"
+                name="diagnosis"
                 value={formData.diagnosis}
                 onChange={(e) => handleInputChange("diagnosis", e.target.value)}
+                onBlur={() => handleFieldBlur("diagnosis")}
                 error={errors.diagnosis}
-                required
+                isRequired
                 placeholder="Masukkan diagnosa atau keluhan utama"
                 className="bg-white/80 border-slate-300 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
               />
@@ -207,13 +294,15 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
               <div className="space-y-2">
                 <Input
                   label="Tanggal Masuk"
+                  name="admissionDate"
                   type="date"
                   value={formData.admissionDate}
                   onChange={(e) =>
                     handleInputChange("admissionDate", e.target.value)
                   }
+                  onBlur={() => handleFieldBlur("admissionDate")}
                   error={errors.admissionDate}
-                  required
+                  isRequired
                   max={new Date().toISOString().split("T")[0]}
                   className="bg-white/80 border-slate-300 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
                 />
@@ -222,10 +311,12 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
               <div className="space-y-2">
                 <Select
                   label="Dokter Penanggung Jawab"
+                  name="doctor"
                   value={formData.doctor}
                   onChange={(e) => handleInputChange("doctor", e.target.value)}
+                  onBlur={() => handleFieldBlur("doctor")}
                   error={errors.doctor}
-                  required
+                  isRequired
                   options={doctorOptions}
                   placeholder="Pilih dokter"
                   className="bg-white/80 border-slate-300 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
@@ -236,10 +327,12 @@ export const PatientForm = ({ onSuccess, onCancel }: PatientFormProps) => {
             <div className="space-y-2">
               <Select
                 label="Ruangan"
+                name="room"
                 value={formData.room}
                 onChange={(e) => handleInputChange("room", e.target.value)}
+                onBlur={() => handleFieldBlur("room")}
                 error={errors.room}
-                required
+                isRequired
                 options={roomOptions}
                 placeholder="Pilih ruangan"
                 className="bg-white/80 border-slate-300 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"

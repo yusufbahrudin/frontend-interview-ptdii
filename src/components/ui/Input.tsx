@@ -5,16 +5,17 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   helperText?: string;
+  isRequired?: boolean;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, className, ...props }, ref) => {
+  ({ label, error, helperText, isRequired, className, ...props }, ref) => {
     return (
       <div className="w-full">
         {label && (
           <label className="block text-sm font-semibold text-slate-700 mb-2">
             {label}
-            {props.required && <span className="text-red-500 ml-1">*</span>}
+            {isRequired && <span className="text-red-500 ml-1">*</span>}
           </label>
         )}
         <input
